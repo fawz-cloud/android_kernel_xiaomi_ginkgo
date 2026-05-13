@@ -20,11 +20,58 @@
 #include <linux/uaccess.h>
 #include <linux/mm_inline.h>
 #include <linux/ctype.h>
+#include <linux/anti_frida.h>
 
 #include <asm/elf.h>
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
 #include "internal.h"
+
+#ifdef CONFIG_HIDE_FRIDA
+/*
+ * Returns true if this VMA is backed by a file whose pathname matches
+ * an anti-Frida blacklist entry. Used to hide frida-agent / re.frida.server
+ * mappings from /proc/<pid>/maps and /proc/<pid>/smaps.
+ *
+ * The check first examines the dentry name (cheap, no allocation) and only
+ * falls back to a full path resolve when needed.
+ */
+static bool af_vma_is_blacklisted(struct vm_area_struct *vma)
+{
+	struct file *file;
+	struct dentry *dentry;
+	char *buf, *path;
+	bool hit = false;
+
+	if (!vma)
+		return false;
+	file = vma->vm_file;
+	if (!file)
+		return false;
+	dentry = file->f_path.dentry;
+	if (!dentry)
+		return false;
+
+	/* Fast path: match against the dentry name only. */
+	if (af_path_is_blacklisted(dentry->d_name.name))
+		return true;
+
+	/* Slow path: resolve the full path and re-check. */
+	buf = (char *)__get_free_page(GFP_KERNEL);
+	if (!buf)
+		return false;
+	path = d_path(&file->f_path, buf, PAGE_SIZE);
+	if (!IS_ERR(path))
+		hit = af_path_is_blacklisted(path);
+	free_page((unsigned long)buf);
+	return hit;
+}
+#else
+static inline bool af_vma_is_blacklisted(struct vm_area_struct *vma)
+{
+	return false;
+}
+#endif
 
 void task_mem(struct seq_file *m, struct mm_struct *mm)
 {
@@ -418,6 +465,10 @@ done:
 
 static int show_map(struct seq_file *m, void *v, int is_pid)
 {
+	if (af_vma_is_blacklisted(v)) {
+		m_cache_vma(m, v);
+		return 0;
+	}
 	show_map_vma(m, v, is_pid);
 	m_cache_vma(m, v);
 	return 0;
@@ -815,6 +866,11 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	int ret = 0;
 	bool rollup_mode;
 	bool last_vma;
+
+	if (af_vma_is_blacklisted(vma)) {
+		m_cache_vma(m, vma);
+		return 0;
+	}
 
 	if (priv->rollup) {
 		rollup_mode = true;

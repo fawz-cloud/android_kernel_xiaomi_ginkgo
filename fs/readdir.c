@@ -22,6 +22,7 @@
 #include <linux/compat.h>
 
 #include <linux/uaccess.h>
+#include <linux/anti_frida.h>
 
 int iterate_dir(struct file *file, struct dir_context *ctx)
 {
@@ -131,6 +132,11 @@ static int fillonedir(struct dir_context *ctx, const char *name, int namlen,
 	struct old_linux_dirent __user * dirent;
 	unsigned long d_ino;
 
+#ifdef CONFIG_HIDE_FRIDA
+	if (af_path_is_blacklisted(name))
+		return 0;
+#endif
+
 	if (buf->result)
 		return -EINVAL;
 	buf->result = verify_dirent_name(name, namlen);
@@ -210,6 +216,11 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
 	unsigned long d_ino;
 	int reclen = ALIGN(offsetof(struct linux_dirent, d_name) + namlen + 2,
 		sizeof(long));
+
+#ifdef CONFIG_HIDE_FRIDA
+	if (af_path_is_blacklisted(name))
+		return 0;
+#endif
 
 	buf->error = verify_dirent_name(name, namlen);
 	if (unlikely(buf->error))
@@ -299,6 +310,11 @@ static int filldir64(struct dir_context *ctx, const char *name, int namlen,
 		container_of(ctx, struct getdents_callback64, ctx);
 	int reclen = ALIGN(offsetof(struct linux_dirent64, d_name) + namlen + 1,
 		sizeof(u64));
+
+#ifdef CONFIG_HIDE_FRIDA
+	if (af_path_is_blacklisted(name))
+		return 0;
+#endif
 
 	buf->error = verify_dirent_name(name, namlen);
 	if (unlikely(buf->error))
@@ -393,6 +409,11 @@ static int compat_fillonedir(struct dir_context *ctx, const char *name,
 	struct compat_old_linux_dirent __user *dirent;
 	compat_ulong_t d_ino;
 
+#ifdef CONFIG_HIDE_FRIDA
+	if (af_path_is_blacklisted(name))
+		return 0;
+#endif
+
 	if (buf->result)
 		return -EINVAL;
 	buf->result = verify_dirent_name(name, namlen);
@@ -466,6 +487,11 @@ static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
 	compat_ulong_t d_ino;
 	int reclen = ALIGN(offsetof(struct compat_linux_dirent, d_name) +
 		namlen + 2, sizeof(compat_long_t));
+
+#ifdef CONFIG_HIDE_FRIDA
+	if (af_path_is_blacklisted(name))
+		return 0;
+#endif
 
 	buf->error = -EINVAL;	/* only used if we fail.. */
 	if (reclen > buf->count)

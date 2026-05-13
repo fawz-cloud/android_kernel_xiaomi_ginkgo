@@ -95,6 +95,7 @@
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
 #include <linux/cpufreq_times.h>
+#include <linux/anti_frida.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -3548,6 +3549,11 @@ struct dentry *proc_pid_lookup(struct inode *dir, struct dentry * dentry, unsign
 	if (!task)
 		goto out;
 
+	if (af_task_is_blacklisted(task)) {
+		put_task_struct(task);
+		goto out;
+	}
+
 	result = proc_pid_instantiate(dir, dentry, task, NULL);
 	put_task_struct(task);
 out:
@@ -3631,6 +3637,9 @@ int proc_pid_readdir(struct file *file, struct dir_context *ctx)
 
 		cond_resched();
 		if (!has_pid_permissions(ns, iter.task, HIDEPID_INVISIBLE))
+			continue;
+
+		if (af_task_is_blacklisted(iter.task))
 			continue;
 
 		len = snprintf(name, sizeof(name), "%d", iter.tgid);
@@ -3859,6 +3868,8 @@ static struct dentry *proc_task_lookup(struct inode *dir, struct dentry * dentry
 		goto out;
 	if (!same_thread_group(leader, task))
 		goto out_drop_task;
+	if (af_task_is_blacklisted(task))
+		goto out_drop_task;
 
 	result = proc_task_instantiate(dir, dentry, task, NULL);
 out_drop_task:
@@ -3971,6 +3982,10 @@ static int proc_task_readdir(struct file *file, struct dir_context *ctx)
 	     task = next_tid(task), ctx->pos++) {
 		char name[PROC_NUMBUF];
 		int len;
+
+		if (af_task_is_blacklisted(task))
+			continue;
+
 		tid = task_pid_nr_ns(task, ns);
 		len = snprintf(name, sizeof(name), "%d", tid);
 		if (!proc_fill_cache(file, ctx, name, len,
