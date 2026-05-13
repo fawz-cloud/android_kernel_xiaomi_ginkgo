@@ -62,6 +62,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
+              LLVM_IAS=1 \
               Image.gz-dtb \
               dtbo.img
 
