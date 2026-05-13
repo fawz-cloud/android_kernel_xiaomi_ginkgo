@@ -1896,6 +1896,19 @@ config TRACEPOINTS
 
 source "arch/Kconfig"
 
+config HIDE_FRIDA
+	bool "Hide Frida instrumentation toolkit from userspace"
+	default y
+	help
+	  When enabled, the kernel hides the presence of the Frida dynamic
+	  instrumentation toolkit (frida-server, frida-agent, gum-js-loop,
+	  default tcp ports 27042/27043, etc.) from userspace by filtering
+	  /proc directory listings, /proc/<pid>/maps, and /proc/net/tcp{,6}.
+
+	  This is useful on production builds where Frida-based detection
+	  by anti-cheat / anti-tamper userspace agents is undesirable.
+	  Say N to disable the filter entirely.
+
 endmenu		# General setup
 
 config HAVE_GENERIC_DMA_COHERENT

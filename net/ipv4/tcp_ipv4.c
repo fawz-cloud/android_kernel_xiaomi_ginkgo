@@ -62,6 +62,7 @@
 #include <linux/init.h>
 #include <linux/times.h>
 #include <linux/slab.h>
+#include <linux/anti_frida.h>
 
 #include <net/net_namespace.h>
 #include <net/icmp.h>
@@ -2398,6 +2399,21 @@ static int tcp4_seq_show(struct seq_file *seq, void *v)
 		goto out;
 	}
 	st = seq->private;
+
+	/* Hide Frida default listening / control ports (27042, 27043). */
+	if (sk->sk_state == TCP_TIME_WAIT) {
+		const struct inet_timewait_sock *tw = v;
+
+		if (af_tcp_port_is_blacklisted(ntohs(tw->tw_sport)) ||
+		    af_tcp_port_is_blacklisted(ntohs(tw->tw_dport)))
+			return 0;
+	} else {
+		const struct inet_sock *inet = inet_sk(sk);
+
+		if (af_tcp_port_is_blacklisted(ntohs(inet->inet_sport)) ||
+		    af_tcp_port_is_blacklisted(ntohs(inet->inet_dport)))
+			return 0;
+	}
 
 	if (sk->sk_state == TCP_TIME_WAIT)
 		get_timewait4_sock(v, seq, st->num);

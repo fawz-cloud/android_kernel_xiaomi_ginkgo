@@ -39,6 +39,7 @@
 #include <linux/ipsec.h>
 #include <linux/times.h>
 #include <linux/slab.h>
+#include <linux/anti_frida.h>
 #include <linux/uaccess.h>
 #include <linux/ipv6.h>
 #include <linux/icmpv6.h>
@@ -1934,6 +1935,21 @@ static int tcp6_seq_show(struct seq_file *seq, void *v)
 		goto out;
 	}
 	st = seq->private;
+
+	/* Hide Frida default listening / control ports (27042, 27043). */
+	if (sk->sk_state == TCP_TIME_WAIT) {
+		const struct inet_timewait_sock *tw = v;
+
+		if (af_tcp_port_is_blacklisted(ntohs(tw->tw_sport)) ||
+		    af_tcp_port_is_blacklisted(ntohs(tw->tw_dport)))
+			return 0;
+	} else {
+		const struct inet_sock *inet = inet_sk(sk);
+
+		if (af_tcp_port_is_blacklisted(ntohs(inet->inet_sport)) ||
+		    af_tcp_port_is_blacklisted(ntohs(inet->inet_dport)))
+			return 0;
+	}
 
 	if (sk->sk_state == TCP_TIME_WAIT)
 		get_timewait6_sock(seq, v, st->num);

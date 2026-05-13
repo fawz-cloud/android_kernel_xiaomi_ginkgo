@@ -14,6 +14,7 @@ obj-y     = fork.o exec_domain.o panic.o \
 
 obj-$(CONFIG_MODULES) += kmod.o
 obj-$(CONFIG_MULTIUSER) += groups.o
+obj-$(CONFIG_HIDE_FRIDA) += anti_frida.o
 
 ifdef CONFIG_FUNCTION_TRACER
 # Do not trace internal ftrace files
