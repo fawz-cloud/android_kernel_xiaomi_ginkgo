@@ -1,0 +1,91 @@
+name: Build Kernel - SuKiSU Ultra (Ginkgo)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - sukisu-ultra
+
+env:
+  ARCH: arm64
+  LOCALVERSION: "-SuKiSU-Ultra"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+
+      - name: Download toolchain (Clang + GCC)
+        run: |
+          mkdir -p $HOME/toolchain
+          git clone --depth=1 -b clang-21.0 https://gitlab.com/kutemeikito/rastamod69-clang $HOME/toolchain/clang
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git $HOME/toolchain/gcc-64
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git $HOME/toolchain/gcc-32
+
+      - name: Build kernel
+        run: |
+          export PATH="$HOME/toolchain/clang/bin:$HOME/toolchain/gcc-64/bin:$HOME/toolchain/gcc-32/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="GithubActions"
+          export KBUILD_BUILD_HOST="GithubCI"
+
+          # Generate defconfig with fragments
+          make O=out ARCH=arm64 vendor/trinket-perf_defconfig vendor/xiaomi-trinket.config vendor/ginkgo.config
+
+          # Ensure KSU configs are set
+          echo "CONFIG_KPROBES=y" >> out/.config
+          echo "CONFIG_KSU=y" >> out/.config
+          make O=out ARCH=arm64 olddefconfig
+
+          # Build kernel image and dtbo
+          make -j$(nproc --all) O=out \
+              ARCH=arm64 \
+              CC=clang \
+              LD=ld.lld \
+              AR=llvm-ar \
+              AS=llvm-as \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              Image.gz-dtb \
+              dtbo.img
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 -b dynamic https://github.com/kutemeikito/AnyKernel3
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          cp out/arch/arm64/boot/dtbo.img AnyKernel3/
+          cd AnyKernel3
+          zip -r9 ../SuKiSU-Ultra-Ginkgo-$(date +"%Y%m%d-%H%M").zip * -x '*.git*' README.md *placeholder
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuKiSU-Ultra-Ginkgo-Kernel
+          path: SuKiSU-Ultra-Ginkgo-*.zip
+
+      - name: Create release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sukisu-ultra-${{ github.run_number }}
+          name: SuKiSU Ultra Ginkgo Build ${{ github.run_number }}
+          files: SuKiSU-Ultra-Ginkgo-*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
